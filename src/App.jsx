@@ -277,7 +277,7 @@ export default function App() {
         parts.push(h);
         // Insert table after first section for maximum visibility
         if (pi === 0 && tableHtml) parts.push(tableHtml);
-        if (imgMap[pi]) parts.push('<img src="' + imgMap[pi] + '" alt="' + struct.sections[pi].h2 + '" style="width:100%;border-radius:8px;margin:16px 0;" loading="lazy"/>');
+        if (imgMap[pi]) parts.push('<img src="' + imgMap[pi] + '" alt="' + struct.sections[pi].h2 + '" style="width:60%;max-width:600px;display:block;margin:16px auto;border-radius:8px;" loading="lazy"/>');
       });
       parts.push(fHtml);
       const preLinkHTML = parts.join("\n\n");
