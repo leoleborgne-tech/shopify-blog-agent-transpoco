@@ -30,7 +30,7 @@ function fillPrompt(template, vars) {
 }
 
 function apiClaude(prompt, maxTokens) {
-  return fetch("https://api.anthropic.com/v1/messages", {
+  return fetch("/api/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: maxTokens || 1000, messages: [{ role: "user", content: prompt }] }),
@@ -47,8 +47,11 @@ function apiClaudeRetry(prompt, maxTokens) {
 }
 
 function scrapeUrl(url) {
-  return fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(url))
-    .then(function(r) { return r.json(); })
+  return fetch("/api/scrape", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: url })
+  }).then(function(r) { return r.json(); })
     .then(function(d) {
       var tmp = document.createElement("div");
       tmp.innerHTML = d.contents || "";
