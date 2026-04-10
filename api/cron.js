@@ -10,13 +10,13 @@ export default async function handler(req, res) {
     const csvRes = await fetch(csvUrl);
     const csvText = await csvRes.text();
 
-    // Parse CSV
+    // Parse CSV — ignore empty lines
     const rows = csvText.split("\n").slice(1).map((row) => {
       const cols = row.split(",").map((c) => c.replace(/^"|"$/g, "").trim());
-      return { keyword: cols[0], url1: cols[1] || "", url2: cols[2] || "", url3: cols[3] || "", used: false };
-    }).filter((r) => r.keyword);
+      return { keyword: cols[0], url1: cols[1] || "", url2: cols[2] || "", url3: cols[3] || "" };
+    }).filter((r) => r.keyword && r.keyword.length > 0);
 
-    // Pick first keyword (rotate based on day of month)
+    // Pick keyword based on day of month — cycles through all valid keywords
     const dayIndex = new Date().getDate() % rows.length;
     const kw = rows[dayIndex];
     if (!kw) return res.status(200).json({ message: "No keywords available" });
