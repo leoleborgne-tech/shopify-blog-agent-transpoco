@@ -209,11 +209,17 @@ export default function App() {
 
       setStep(1, "running");
       const urls = [kw.url1, kw.url2, kw.url3].filter(Boolean);
-      const scraped = await Promise.all(urls.map(scrapeUrl));
-      const cH = scraped.map((s, i) => "Competitor " + (i+1) + ": " + s.headings.slice(0,8).map((h) => h.text).join(", ")).join("\n");
-      const cS = scraped.map((s, i) => "Competitor " + (i+1) + ":\nHeadings: " + s.headings.slice(0,8).map((h) => "[" + h.tag + "] " + h.text).join(" | ") + "\nContent: " + s.text.slice(0,500)).join("\n\n");
-      addLog("Scraped " + scraped.length + " pages", "success");
-      setStep(1, "done", scraped.length + " pages"); await sleep(300);
+      let cH = "No competitor data available.";
+      let cS = "No competitor data available.";
+      if (urls.length > 0) {
+        const scraped = await Promise.all(urls.map(scrapeUrl));
+        cH = scraped.map((s, i) => "Competitor " + (i+1) + ": " + s.headings.slice(0,8).map((h) => h.text).join(", ")).join("\n");
+        cS = scraped.map((s, i) => "Competitor " + (i+1) + ":\nHeadings: " + s.headings.slice(0,8).map((h) => "[" + h.tag + "] " + h.text).join(" | ") + "\nContent: " + s.text.slice(0,500)).join("\n\n");
+        addLog("Scraped " + scraped.length + " pages", "success");
+      } else {
+        addLog("No competitor URLs — skipping scrape", "warn");
+      }
+      setStep(1, "done", urls.length > 0 ? urls.length + " pages" : "skipped"); await sleep(300);
 
       setStep(2, "running");
       const tRaw = await apiClaudeRetry(fillPrompt(prompts.titleMeta, { "{{keyword}}": kw.keyword, "{{tone}}": cfg.tone || "professional", "{{brand}}": cfg.brand || "transpocodirect.com", "{{competitor_headings}}": cH }), 600);
