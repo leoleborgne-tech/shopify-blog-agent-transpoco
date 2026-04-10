@@ -138,6 +138,9 @@ export default function App() {
   const [tab, setTab] = useState("prompts");
   const [keywords, setKeywords] = useState(() => { try { return JSON.parse(localStorage.getItem("sbav3_keywords") || "[]"); } catch(e) { return []; } });
   const [published, setPublished] = useState(() => { try { return JSON.parse(localStorage.getItem("sbav3_published") || "[]"); } catch(e) { return []; } });
+  const [authed, setAuthed] = useState(false);
+  const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState(false);
   const [testMode, setTestMode] = useState(true);
   const [pipeline, setPipeline] = useState([]);
   const [running, setRunning] = useState(false);
@@ -159,7 +162,34 @@ export default function App() {
       const hhmm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
       if (hhmm === (cfg.scheduleTime || "10:00")) runPipeline();
     }, 60000);
-    return () => clearInterval(timerRef.current);
+    if (!authed) {
+    return (
+      <div style={{ fontFamily: "Inter,sans-serif", minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ background: "#1e293b", borderRadius: 16, padding: 40, border: "1px solid #334155", width: 340 }}>
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <span style={{ fontSize: 40 }}>🤖</span>
+            <h1 style={{ margin: "12px 0 4px", fontSize: 20, fontWeight: 700, color: "#fff" }}>Shopify Blog Agent</h1>
+            <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>Accès restreint — entrez le mot de passe</p>
+          </div>
+          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <input
+              type="password"
+              placeholder="Mot de passe"
+              value={pwInput}
+              onChange={(e) => setPwInput(e.target.value)}
+              style={{ width: "100%", background: "#0f172a", border: "1px solid " + (pwError ? "#ef4444" : "#334155"), borderRadius: 8, padding: "10px 14px", color: "#e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+            />
+            {pwError && <p style={{ margin: 0, fontSize: 12, color: "#ef4444" }}>Mot de passe incorrect</p>}
+            <button type="submit" style={{ background: "linear-gradient(135deg,#3b82f6,#6366f1)", color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+              Se connecter
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return () => clearInterval(timerRef.current);
   }, [cfg.autoSchedule, cfg.scheduleTime]);
 
   const onExcel = (e) => {
