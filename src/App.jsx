@@ -69,23 +69,34 @@ function getFallbackImage(keyword) {
   return "https://picsum.photos/seed/" + (seed % 1000) + "/1200/600";
 }
 
-function getImage(keyword, pKey, uKey) {
-  var fallback = getFallbackImage(keyword);
-  if (uKey) {
-    return fetch("https://api.unsplash.com/search/photos?query=" + encodeURIComponent(keyword) + "&per_page=1&orientation=landscape&client_id=" + uKey)
+function getImage(keyword, pKey, uKey, index) {
+  index = index || 0;
+  var fallback = getFallbackImage(keyword + index);
+  var page = index + 1;
+
+  // Alternate between Unsplash and Pexels based on index
+  if (index % 2 === 0 && uKey) {
+    return fetch("https://api.unsplash.com/search/photos?query=" + encodeURIComponent(keyword) + "&per_page=1&page=" + page + "&orientation=landscape&client_id=" + uKey)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) {
         var url = d && d.results && d.results[0] && d.results[0].urls && d.results[0].urls.regular;
         if (url) return url;
-        return pKey ? tryPexels(keyword, pKey, fallback) : fallback;
-      }).catch(function() { return pKey ? tryPexels(keyword, pKey, fallback) : fallback; });
+        return pKey ? tryPexels(keyword, pKey, fallback, page) : fallback;
+      }).catch(function() { return pKey ? tryPexels(keyword, pKey, fallback, page) : fallback; });
   }
-  if (pKey) return tryPexels(keyword, pKey, fallback);
+  if (pKey) return tryPexels(keyword, pKey, fallback, page);
+  if (uKey) return fetch("https://api.unsplash.com/search/photos?query=" + encodeURIComponent(keyword) + "&per_page=1&page=" + page + "&orientation=landscape&client_id=" + uKey)
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) {
+      var url = d && d.results && d.results[0] && d.results[0].urls && d.results[0].urls.regular;
+      return url || fallback;
+    }).catch(function() { return fallback; });
   return Promise.resolve(fallback);
 }
 
-function tryPexels(keyword, pKey, fallback) {
-  return fetch("https://api.pexels.com/v1/search?query=" + encodeURIComponent(keyword) + "&per_page=1&orientation=landscape", { headers: { "Authorization": pKey } })
+function tryPexels(keyword, pKey, fallback, page) {
+  page = page || 1;
+  return fetch("https://api.pexels.com/v1/search?query=" + encodeURIComponent(keyword) + "&per_page=1&page=" + page + "&orientation=landscape", { headers: { "Authorization": pKey } })
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(d) { return (d && d.photos && d.photos[0] && (d.photos[0].src.large2x || d.photos[0].src.large)) || fallback; })
     .catch(function() { return fallback; });
@@ -299,10 +310,10 @@ export default function App() {
       const imgMap = {};
       const pKey = cfg.pexelsKey ? cfg.pexelsKey.trim() : null;
       const uKey = cfg.unsplashKey ? cfg.unsplashKey.trim() : null;
-      const featImg = await getImage(kw.keyword, pKey, uKey);
+      const featImg = await getImage(kw.keyword, pKey, uKey, 0);
       addLog("Featured image: ready", "success"); await sleep(400);
       for (let ji = 0; ji < Math.min(struct.sections.length, 3); ji++) {
-        imgMap[ji] = await getImage(kw.keyword + " " + struct.sections[ji].h2, pKey, uKey);
+        imgMap[ji] = await getImage(kw.keyword + " " + struct.sections[ji].h2, pKey, uKey, ji + 1);
         addLog("Image " + (ji+1) + ": ready", "success"); await sleep(400);
       }
       setStep(8, "done", "done");
