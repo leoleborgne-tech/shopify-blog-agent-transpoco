@@ -1,22 +1,30 @@
 export default async function handler(req, res) {
-  // Verify this is called by Vercel Cron
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   try {
-    // Get keywords from environment variable
-    const keywords = JSON.parse(process.env.KEYWORDS_JSON || "[]");
-    const published = JSON.parse(process.env.PUBLISHED_JSON || "[]");
+    // Read keywords from Google Sheet
+    const sheetId = "1D3unbXti5EXGfk8_843jFluCHwDCJa2Hq-j9qGNRt5Y";
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=1298400966`;
+    const csvRes = await fetch(csvUrl);
+    const csvText = await csvRes.text();
 
-    // Pick next unused keyword
-    const kw = keywords.find((k) => !k.used) || keywords[0];
+    // Parse CSV
+    const rows = csvText.split("\n").slice(1).map((row) => {
+      const cols = row.split(",").map((c) => c.replace(/^"|"$/g, "").trim());
+      return { keyword: cols[0], url1: cols[1] || "", url2: cols[2] || "", url3: cols[3] || "", used: false };
+    }).filter((r) => r.keyword);
+
+    // Pick first keyword (rotate based on day of month)
+    const dayIndex = new Date().getDate() % rows.length;
+    const kw = rows[dayIndex];
     if (!kw) return res.status(200).json({ message: "No keywords available" });
 
-    // Run the full pipeline
-    const result = await runPipeline(kw, published);
+    // Run pipeline
+    const result = await runPipeline(kw);
+    return res.status(200).json({ success: true, title: result.title, keyword: kw.keyword });
 
-    return res.status(200).json({ success: true, title: result.title });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
