@@ -50,7 +50,7 @@ async function callClaude(prompt, maxTokens) {
 }
 
 async function runPipeline(kw, published) {
-  // 1. Scrape competitors (optional)
+async function runPipeline(kw) {
   const urls = [kw.url1, kw.url2, kw.url3].filter(Boolean);
   let cH = "No competitor data available.";
   let cS = "No competitor data available.";
@@ -93,7 +93,7 @@ async function runPipeline(kw, published) {
   // 6. Key Takeaways
   const eHtml = await callClaude(`Write Key Takeaways block for "${kw.keyword}". Title: "${tData.title}". Sections: ${struct.sections.map(s=>s.h2).join(", ")}. HTML only: <div class="essentiel-block"><h2>Key Takeaways - title</h2><p>intro</p><ul><li><strong>point</strong></li></ul></div>`, 600);
 
-  // 7. Assemble HTML
+  // 1. Scrape competitors (optional)
   const css = "<style>.essentiel-block{background:#f0f7ff;border-left:4px solid #2563eb;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:28px;} h2{margin-top:72px;margin-bottom:24px;} h3{margin-top:40px;margin-bottom:16px;}</style>";
   const parts = [css, eHtml, ...secHtmls, fHtml];
   const finalHTML = parts.join("\n\n");
