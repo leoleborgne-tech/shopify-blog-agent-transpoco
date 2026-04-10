@@ -42,21 +42,25 @@ async function callClaude(prompt, maxTokens) {
 }
 
 async function runPipeline(kw, published) {
-  // 1. Scrape competitors
+  // 1. Scrape competitors (optional)
   const urls = [kw.url1, kw.url2, kw.url3].filter(Boolean);
-  const scraped = await Promise.all(urls.map(async (url) => {
-    try {
-      const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
-      const html = await r.text();
-      const headings = [...html.matchAll(/<h[123][^>]*>(.*?)<\/h[123]>/gi)]
-        .map((m) => m[1].replace(/<[^>]+>/g, "").trim())
-        .slice(0, 8);
-      return { url, headings, text: html.replace(/<[^>]+>/g, " ").slice(0, 500) };
-    } catch { return { url, headings: [], text: "" }; }
-  }));
-
-  const cH = scraped.map((s, i) => `Competitor ${i+1}: ${s.headings.join(", ")}`).join("\n");
-  const cS = scraped.map((s, i) => `Competitor ${i+1}:\nHeadings: ${s.headings.join(" | ")}\nContent: ${s.text}`).join("\n\n");
+  let cH = "No competitor data available.";
+  let cS = "No competitor data available.";
+  
+  if (urls.length > 0) {
+    const scraped = await Promise.all(urls.map(async (url) => {
+      try {
+        const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+        const html = await r.text();
+        const headings = [...html.matchAll(/<h[123][^>]*>(.*?)<\/h[123]>/gi)]
+          .map((m) => m[1].replace(/<[^>]+>/g, "").trim())
+          .slice(0, 8);
+        return { url, headings, text: html.replace(/<[^>]+>/g, " ").slice(0, 500) };
+      } catch { return { url, headings: [], text: "" }; }
+    }));
+    cH = scraped.map((s, i) => `Competitor ${i+1}: ${s.headings.join(", ")}`).join("\n");
+    cS = scraped.map((s, i) => `Competitor ${i+1}:\nHeadings: ${s.headings.join(" | ")}\nContent: ${s.text}`).join("\n\n");
+  }
 
   // 2. Title + Meta
   const tRaw = await callClaude(`Propose 1 optimized title and meta description for: "${kw.keyword}". Brand: transpocodirect.com. Competitor headings:\n${cH}\n\nJSON only: {"title":"...","meta_description":"...","focus_angle":"..."}`, 600);
