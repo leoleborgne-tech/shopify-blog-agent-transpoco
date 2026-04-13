@@ -73,8 +73,6 @@ function getImage(keyword, pKey, uKey, index) {
   index = index || 0;
   var fallback = getFallbackImage(keyword + index);
   var page = index + 1;
-
-  // Alternate between Unsplash and Pexels based on index
   if (index % 2 === 0 && uKey) {
     return fetch("https://api.unsplash.com/search/photos?query=" + encodeURIComponent(keyword) + "&per_page=1&page=" + page + "&orientation=landscape&client_id=" + uKey)
       .then(function(r) { return r.ok ? r.json() : null; })
@@ -109,7 +107,7 @@ var DP = {
   faq: "Write 3 to 4 relevant question/answer pairs for a blog article about \"{{keyword}}\", targeting Google position zero.\n\nQuestions to choose from:\n{{faq_questions}}\n\nRules:\n- Select the 3-4 most relevant questions\n- Each answer: 2-4 sentences, direct, concise\n- Start each answer directly with the response\n- No visual separators, no dashes\n- NO links of any kind\n\nCRITICAL HTML rules:\n- <h2> for \"FAQ - Frequently Asked Questions\"\n- <h3> for each question\n- <p> for each answer\n- Return ONLY the HTML, no markdown, no fences",
   essential: "Write a summary block to place at the very top of the article about \"{{keyword}}\".\n\nArticle title: \"{{title}}\"\nSections covered: {{sections}}\n\nObjective: Reader immediately finds the answer to their need. Make them want to read more. Naturally integrate the keyword.\n\nStructure:\n- A unique catchy title displayed as H2\n- 1-line intro sentence\n- 3-4 key points in bullet form (key info in bold, one short sentence each)\n- Optional brief concluding sentence\n\nConstraints:\n- 150-200 words max\n- Clear, dynamic, accessible\n- No visual separators, no dashes\n- NO links\n\nCRITICAL HTML rules:\n- Wrap in <div class=\"essentiel-block\">\n- Title MUST use <h2>Key Takeaways - [your catchy title]</h2>\n- <p> for intro and conclusion\n- <ul><li> with <strong> for key points\n- Return ONLY the HTML, no markdown, no fences",
   linking: "You are an SEO specialist. Analyze this article and decide where to insert links.\n\nArticle topic: \"{{keyword}}\"\nArticle title: \"{{title}}\"\n\nArticle text:\n{{article_text}}\n\nAvailable internal articles:\n{{internal_articles}}\n\nRules:\n- 1 external link max: pick an anchor phrase for an authoritative external site. Only if genuinely relevant.\n- 1 to 2 internal links: pick anchor phrases matching a similar topic from internal articles list.\n- Anchors must be natural phrases already present in the text.\n- NEVER pick an anchor from the Key Takeaways block.\n- If no internal article is relevant, return empty array.\n- If no external link is relevant, return null.\n\nSTRICT output: valid JSON only, no markdown, no fences:\n{\n  \"external_link\": {\"anchor\": \"exact phrase from article body only\", \"url\": \"https://...\", \"reason\": \"why relevant\"},\n  \"internal_links\": [{\"anchor\": \"exact phrase\", \"url\": \"https://transpocodirect.com/blogs/news/...\", \"reason\": \"why\"}]\n}",
-  table: "You are a content strategist. Create ONE concise HTML comparison table for this article.\n\nArticle topic: \"{{keyword}}\"\nArticle title: \"{{title}}\"\nArticle summary: {{article_summary}}\n\nSTRICT table rules:\n- Choose the most relevant type: comparison, pros/cons, features, steps summary\n- MAX 4 columns, MAX 6 rows\n- Each cell must contain SHORT text only: 1 to 6 words max per cell — absolutely no sentences, no paragraphs, no long text\n- Headers: 1 to 3 words max\n- Add a one-line caption before the table\n- NO nested tags inside cells (no <ul>, no <p>, no <strong> blocks) — plain text only in <td>\n\nCRITICAL HTML rules:\n- Return ONLY the HTML, no markdown, no code fences, no explanation\n- Caption: <p><strong>Your caption here</strong></p>\n- Table: <table style=\"width:100%;border-collapse:collapse;margin:24px 0;\">\n- Headers: <thead><tr><th style=\"background:#f0f7ff;padding:10px 12px;text-align:left;border:1px solid #cbd5e1;font-size:13px;\">Header</th></tr></thead>\n- Rows: <tbody><tr><td style=\"padding:9px 12px;border:1px solid #e2e8f0;font-size:13px;\">Short text</td></tr></tbody>\n- Even rows: add background:#f8fafc; to the <tr style=>\n- NOTHING outside the <p> caption and <table> tags"
+  table: "You are a content strategist. Create ONE concise HTML comparison table for this article.\n\nArticle topic: \"{{keyword}}\"\nArticle title: \"{{title}}\"\nArticle summary: {{article_summary}}\n\nSTRICT table rules:\n- Choose the most relevant type: comparison, pros/cons, features, steps summary\n- MAX 4 columns, MAX 6 rows\n- Each cell must contain SHORT text only: 1 to 6 words max per cell\n- Headers: 1 to 3 words max\n- Add a one-line caption before the table\n- NO nested tags inside cells\n\nCRITICAL HTML rules:\n- Return ONLY the HTML, no markdown, no code fences, no explanation\n- Caption: <p><strong>Your caption here</strong></p>\n- Table: <table style=\"width:100%;border-collapse:collapse;margin:24px 0;\">\n- Headers: <thead><tr><th style=\"background:#f0f7ff;padding:10px 12px;text-align:left;border:1px solid #cbd5e1;font-size:13px;\">Header</th></tr></thead>\n- Rows: <tbody><tr><td style=\"padding:9px 12px;border:1px solid #e2e8f0;font-size:13px;\">Short text</td></tr></tbody>\n- Even rows: add background:#f8fafc; to the <tr style=>\n- NOTHING outside the <p> caption and <table> tags"
 };
 
 var PM = [
@@ -149,14 +147,18 @@ export default function App() {
   const [tab, setTab] = useState("prompts");
   const [keywords, setKeywords] = useState(() => { try { return JSON.parse(localStorage.getItem("sbav3_keywords") || "[]"); } catch(e) { return []; } });
   const [published, setPublished] = useState(() => { try { return JSON.parse(localStorage.getItem("sbav3_published") || "[]"); } catch(e) { return []; } });
-  const [authed, setAuthed] = useState(false);
-  const [pwInput, setPwInput] = useState("");
-  const [pwError, setPwError] = useState(false);
   const [testMode, setTestMode] = useState(true);
   const [pipeline, setPipeline] = useState([]);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
+  const isClaudeEnv = typeof window !== "undefined" && (window.location.hostname.includes("webcontainer") || window.location.hostname.includes("stackblitz") || window.location.hostname === "");
+  const [authed, setAuthed] = useState(isClaudeEnv);
+  const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState(false);
+  const [manTitle, setManTitle] = useState("");
+  const [manUrl, setManUrl] = useState("");
+  const [manKw, setManKw] = useState("");
   const timerRef = useRef(null);
 
   const saveCfg = (p) => { const n = Object.assign({}, cfg, p); setCfg(n); try { localStorage.setItem("sbav3_cfg", JSON.stringify(n)); } catch(e) {} };
@@ -164,6 +166,14 @@ export default function App() {
   const resetAll = () => { try { localStorage.removeItem("sbav3_prompts"); } catch(e) {} setPrompts(Object.assign({}, DP)); setActivePrompt("titleMeta"); };
   const addLog = (msg, type) => setLogs((p) => [{ msg, type: type || "info", t: new Date().toLocaleTimeString("en-GB") }, ...p].slice(0, 200));
   const setStep = (i, status, detail) => setPipeline((p) => p.map((s, idx) => idx === i ? Object.assign({}, s, { status, detail: detail || "" }) : s));
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    try {
+      const r = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pwInput }) });
+      if (r.ok) { setAuthed(true); setPwError(false); } else { setPwError(true); }
+    } catch(e) { setPwError(true); }
+  };
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -173,34 +183,7 @@ export default function App() {
       const hhmm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
       if (hhmm === (cfg.scheduleTime || "10:00")) runPipeline();
     }, 60000);
-    if (!authed) {
-    return (
-      <div style={{ fontFamily: "Inter,sans-serif", minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ background: "#1e293b", borderRadius: 16, padding: 40, border: "1px solid #334155", width: 340 }}>
-          <div style={{ textAlign: "center", marginBottom: 28 }}>
-            <span style={{ fontSize: 40 }}>🤖</span>
-            <h1 style={{ margin: "12px 0 4px", fontSize: 20, fontWeight: 700, color: "#fff" }}>Shopify Blog Agent</h1>
-            <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>Accès restreint — entrez le mot de passe</p>
-          </div>
-          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <input
-              type="password"
-              placeholder="Mot de passe"
-              value={pwInput}
-              onChange={(e) => setPwInput(e.target.value)}
-              style={{ width: "100%", background: "#0f172a", border: "1px solid " + (pwError ? "#ef4444" : "#334155"), borderRadius: 8, padding: "10px 14px", color: "#e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
-            />
-            {pwError && <p style={{ margin: 0, fontSize: 12, color: "#ef4444" }}>Mot de passe incorrect</p>}
-            <button type="submit" style={{ background: "linear-gradient(135deg,#3b82f6,#6366f1)", color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
-              Se connecter
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  return () => clearInterval(timerRef.current);
+    return () => clearInterval(timerRef.current);
   }, [cfg.autoSchedule, cfg.scheduleTime]);
 
   const onExcel = (e) => {
@@ -234,6 +217,22 @@ export default function App() {
     try { localStorage.setItem("sbav3_published", JSON.stringify(u)); } catch(e) {}
   };
 
+  const addManual = () => {
+    if (!manTitle.trim() || !manUrl.trim() || !manKw.trim()) return;
+    const entry = { title: manTitle.trim(), url: manUrl.trim(), keyword: manKw.trim(), date: new Date().toLocaleDateString("fr-FR") };
+    const u = [entry, ...published]; setPublished(u);
+    try { localStorage.setItem("sbav3_published", JSON.stringify(u)); } catch(e) {}
+    setManTitle(""); setManUrl(""); setManKw("");
+    addLog("Article ajouté: " + manTitle, "success");
+  };
+
+  const removePublished = (i) => {
+    if (!window.confirm("Supprimer cet article ?")) return;
+    const u = published.filter((_, idx) => idx !== i);
+    setPublished(u);
+    try { localStorage.setItem("sbav3_published", JSON.stringify(u)); } catch(e) {}
+  };
+
   const runPipeline = async () => {
     if (running) return;
     setRunning(true); setResult(null);
@@ -257,9 +256,7 @@ export default function App() {
         cH = scraped.map((s, i) => "Competitor " + (i+1) + ": " + s.headings.slice(0,8).map((h) => h.text).join(", ")).join("\n");
         cS = scraped.map((s, i) => "Competitor " + (i+1) + ":\nHeadings: " + s.headings.slice(0,8).map((h) => "[" + h.tag + "] " + h.text).join(" | ") + "\nContent: " + s.text.slice(0,500)).join("\n\n");
         addLog("Scraped " + scraped.length + " pages", "success");
-      } else {
-        addLog("No competitor URLs — skipping scrape", "warn");
-      }
+      } else { addLog("No competitor URLs - skipping scrape", "warn"); }
       setStep(1, "done", urls.length > 0 ? urls.length + " pages" : "skipped"); await sleep(300);
 
       setStep(2, "running");
@@ -300,7 +297,6 @@ export default function App() {
       const articleSummary = secHtmls.map((h) => h.replace(/<[^>]+>/g, " ")).join(" ").replace(/\s+/g, " ").slice(0, 1500);
       const tableRaw = await apiClaudeRetry(fillPrompt(prompts.table, { "{{keyword}}": kw.keyword, "{{title}}": tData.title, "{{article_summary}}": articleSummary }), 1000);
       let tableHtml = tableRaw.replace(/```html|```/gi, "").trim();
-      // Force close table tag and cut anything after </table>
       const tableEnd = tableHtml.lastIndexOf("</table>");
       if (tableEnd !== -1) tableHtml = tableHtml.slice(0, tableEnd + 8);
       else tableHtml = "";
@@ -322,7 +318,6 @@ export default function App() {
       const parts = [css, eHtml];
       secHtmls.forEach((h, pi) => {
         parts.push(h);
-        // Insert table after first section for maximum visibility
         if (pi === 0 && tableHtml) parts.push(tableHtml);
         if (imgMap[pi]) parts.push('<img src="' + imgMap[pi] + '" alt="' + struct.sections[pi].h2 + '" style="width:60%;max-width:600px;display:block;margin:16px auto;border-radius:8px;" loading="lazy"/>');
       });
@@ -330,7 +325,7 @@ export default function App() {
       const preLinkHTML = parts.join("\n\n");
       const stripped = preLinkHTML.replace(/<a\s[^>]*>(.*?)<\/a>/gi, "$1");
 
-      setStep(8, "running");
+      setStep(9, "running");
       const intArts = published.slice(0, 15).map((a) => '- "' + a.keyword + '" | ' + a.title + ' | ' + a.url).join("\n") || "No internal articles yet.";
       const artText = stripped.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 3000);
       let finalHTML = stripped;
@@ -352,42 +347,27 @@ export default function App() {
           });
         }
       } catch(le) { addLog("Linking skipped: " + le.message, "warn"); }
-      setStep(8, "done");
-
-      setStep(9, "running");
-      setResult({ title: tData.title, meta: tData.meta_description, html: finalHTML, featuredImage: featImg });
-      addLog("HTML assembled (" + finalHTML.length + " chars)", "success");
-      setStep(9, "done"); await sleep(300);
+      setStep(9, "done");
 
       setStep(10, "running");
+      setResult({ title: tData.title, meta: tData.meta_description, html: finalHTML, featuredImage: featImg });
+      addLog("HTML assembled (" + finalHTML.length + " chars)", "success");
+      setStep(10, "done"); await sleep(300);
+
+      setStep(11, "running");
       if (testMode) {
         addLog("TEST MODE - see Preview tab", "warn");
-        setStep(10, "done", "Test mode"); setTab("preview");
+        setStep(11, "done", "Test mode"); setTab("preview");
       } else {
         if (!cfg.makeWebhook) throw new Error("Make Webhook URL missing in Config.");
-        const makePayload = {
-          title: tData.title,
-          meta_description: tData.meta_description,
-          author: cfg.authorName || "Admin",
-          tags: kw.keyword,
-          featured_image_url: featImg || "",
-          body_html: finalHTML,
-          keyword: kw.keyword,
-          published: true,
-          published_at: new Date().toISOString()
-        };
-        const makeRes = await fetch(cfg.makeWebhook, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(makePayload)
-        });
+        const makePayload = { title: tData.title, meta_description: tData.meta_description, author: cfg.authorName || "Admin", tags: kw.keyword, featured_image_url: featImg || "", body_html: finalHTML, keyword: kw.keyword, published: true, published_at: new Date().toISOString() };
+        const makeRes = await fetch(cfg.makeWebhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(makePayload) });
         if (!makeRes.ok) throw new Error("Make webhook error: " + makeRes.status);
         markUsed(kw.keyword);
         savePub(tData.title, kw.keyword, tData.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"));
         addLog("Sent to Make successfully!", "success");
-        setStep(10, "done", "Sent to Make");
+        setStep(11, "done", "Sent to Make");
       }
-
     } catch(err) {
       addLog(err.message, "error");
       setPipeline((p) => p.map((s) => s.status === "running" ? Object.assign({}, s, { status: "error", detail: err.message }) : s));
@@ -398,9 +378,28 @@ export default function App() {
   const lbl = { display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" };
   const aMeta = PM.find((p) => p.key === activePrompt);
 
+  if (!authed) {
+    return (
+      <div style={{ fontFamily: "Inter,sans-serif", minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ background: "#1e293b", borderRadius: 16, padding: 40, border: "1px solid #334155", width: 340 }}>
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <span style={{ fontSize: 40 }}>🤖</span>
+            <h1 style={{ margin: "12px 0 4px", fontSize: 20, fontWeight: 700, color: "#fff" }}>Shopify Blog Agent</h1>
+            <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>Accès restreint — entrez le mot de passe</p>
+          </div>
+          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <input type="password" placeholder="Mot de passe" value={pwInput} onChange={(e) => setPwInput(e.target.value)}
+              style={{ width: "100%", background: "#0f172a", border: "1px solid " + (pwError ? "#ef4444" : "#334155"), borderRadius: 8, padding: "10px 14px", color: "#e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+            {pwError && <p style={{ margin: 0, fontSize: 12, color: "#ef4444" }}>Mot de passe incorrect</p>}
+            <button type="submit" style={{ background: "linear-gradient(135deg,#3b82f6,#6366f1)", color: "#fff", border: "none", borderRadius: 8, padding: "10px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Se connecter</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ fontFamily: "Inter,sans-serif", minHeight: "100vh", background: "#0f172a", color: "#e2e8f0" }}>
-
       <div style={{ background: "linear-gradient(135deg,#1e3a8a,#0f172a)", padding: "18px 24px", borderBottom: "1px solid #1e293b", display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: 26 }}>🤖</span>
         <div style={{ flex: 1 }}>
@@ -594,8 +593,30 @@ export default function App() {
                 <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 700, color: "#fff" }}>🔗 Articles publiés</p>
                 <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>Ces URLs sont proposées comme liens internes dans les prochains articles.</p>
               </div>
-              <button onClick={() => { if (window.confirm("Vider l'historique ?")) { setPublished([]); try { localStorage.removeItem("sbav3_published"); } catch(e) {} }}} style={{ background: "#7f1d1d", color: "#fca5a5", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}>🗑 Vider</button>
+              <button onClick={() => { if (window.confirm("Vider l'historique ?")) { setPublished([]); try { localStorage.removeItem("sbav3_published"); } catch(e) {} }}} style={{ background: "#7f1d1d", color: "#fca5a5", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}>🗑 Tout vider</button>
             </div>
+
+            <div style={{ background: "#0f172a", borderRadius: 10, padding: 14, marginBottom: 16, border: "1px solid #334155" }}>
+              <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>➕ Ajouter un article manuellement</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 8, alignItems: "end" }}>
+                <div>
+                  <span style={lbl}>Titre</span>
+                  <input style={inp} placeholder="Titre de l'article" value={manTitle} onChange={(e) => setManTitle(e.target.value)} />
+                </div>
+                <div>
+                  <span style={lbl}>URL</span>
+                  <input style={inp} placeholder="https://transpocodirect.com/blogs/news/..." value={manUrl} onChange={(e) => setManUrl(e.target.value)} />
+                </div>
+                <div>
+                  <span style={lbl}>Mot-clé</span>
+                  <input style={inp} placeholder="ex: traceur gps voiture" value={manKw} onChange={(e) => setManKw(e.target.value)} />
+                </div>
+                <button onClick={addManual} style={{ background: "linear-gradient(135deg,#3b82f6,#6366f1)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  ➕ Ajouter
+                </button>
+              </div>
+            </div>
+
             {published.length === 0 ? (
               <div style={{ textAlign: "center", padding: 40, color: "#475569" }}>
                 <p style={{ fontSize: 28 }}>🔗</p><p>Aucun article publié pour l'instant.</p>
@@ -606,9 +627,12 @@ export default function App() {
                   <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{a.title}</p>
                   <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#3b82f6" }}>{a.url}</a>
                 </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <span style={{ fontSize: 11, color: "#f59e0b", background: "#1e293b", borderRadius: 6, padding: "2px 8px", display: "block", marginBottom: 4 }}>{a.keyword}</span>
-                  <span style={{ fontSize: 10, color: "#475569" }}>{a.date}</span>
+                <div style={{ textAlign: "right", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                  <div>
+                    <span style={{ fontSize: 11, color: "#f59e0b", background: "#1e293b", borderRadius: 6, padding: "2px 8px", display: "block", marginBottom: 4 }}>{a.keyword}</span>
+                    <span style={{ fontSize: 10, color: "#475569" }}>{a.date}</span>
+                  </div>
+                  <button onClick={() => removePublished(i)} style={{ background: "#7f1d1d", color: "#fca5a5", border: "none", borderRadius: 6, padding: "5px 8px", fontSize: 11, cursor: "pointer" }}>🗑</button>
                 </div>
               </div>
             ))}
