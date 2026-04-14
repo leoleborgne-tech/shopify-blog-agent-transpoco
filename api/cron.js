@@ -49,12 +49,11 @@ async function callClaude(prompt, maxTokens) {
   return data.content.find((b) => b.type === "text").text || "";
 }
 
-async function runPipeline(kw, published) {
 async function runPipeline(kw) {
   const urls = [kw.url1, kw.url2, kw.url3].filter(Boolean);
   let cH = "No competitor data available.";
   let cS = "No competitor data available.";
-  
+
   if (urls.length > 0) {
     const scraped = await Promise.all(urls.map(async (url) => {
       try {
@@ -70,16 +69,16 @@ async function runPipeline(kw) {
     cS = scraped.map((s, i) => `Competitor ${i+1}:\nHeadings: ${s.headings.join(" | ")}\nContent: ${s.text}`).join("\n\n");
   }
 
-  // 2. Title + Meta
+  // Title + Meta
   const tRaw = await callClaude(`Propose 1 optimized title and meta description for: "${kw.keyword}". Brand: transpocodirect.com. Competitor headings:\n${cH}\n\nJSON only: {"title":"...","meta_description":"...","focus_angle":"..."}`, 600);
   const tData = JSON.parse(tRaw.replace(/```json|```/g, "").trim());
 
-  // 3. Structure
+  // Structure
   const sRaw = await callClaude(`Create SEO outline for "${kw.keyword}". Title: "${tData.title}". Competitors:\n${cS}\n\nExactly 3 H2s with 2-4 H3s each. JSON only:\n{"sections":[{"h2":"...","h3s":["..."],"writing_brief":"..."}],"faq_questions":["Q1?","Q2?","Q3?","Q4?","Q5?"]}`, 2000);
   const struct = JSON.parse(sRaw.replace(/```json|```/g, "").trim());
   struct.sections = struct.sections.slice(0, 3);
 
-  // 4. Write sections
+  // Write sections
   const swc = Math.round(1500 / 3);
   const secHtmls = [];
   for (const sec of struct.sections) {
@@ -87,18 +86,18 @@ async function runPipeline(kw) {
     secHtmls.push(html.replace(/```html|```/gi, "").trim());
   }
 
-  // 5. FAQ
+  // FAQ
   const fHtml = await callClaude(`Write FAQ for "${kw.keyword}". Questions:\n${struct.faq_questions.map((q,i) => `${i+1}. ${q}`).join("\n")}\nHTML only: <h2>FAQ</h2><h3>Q</h3><p>A</p>`, 1000);
 
-  // 6. Key Takeaways
+  // Key Takeaways
   const eHtml = await callClaude(`Write Key Takeaways block for "${kw.keyword}". Title: "${tData.title}". Sections: ${struct.sections.map(s=>s.h2).join(", ")}. HTML only: <div class="essentiel-block"><h2>Key Takeaways - title</h2><p>intro</p><ul><li><strong>point</strong></li></ul></div>`, 600);
 
-  // 1. Scrape competitors (optional)
+  // Assemble HTML
   const css = "<style>.essentiel-block{background:#f0f7ff;border-left:4px solid #2563eb;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:28px;} h2{margin-top:72px;margin-bottom:24px;} h3{margin-top:40px;margin-bottom:16px;}</style>";
   const parts = [css, eHtml, ...secHtmls, fHtml];
   const finalHTML = parts.join("\n\n");
 
-  // 8. Send to Make
+  // Send to Make
   const makeWebhook = process.env.MAKE_WEBHOOK_URL;
   if (!makeWebhook) throw new Error("MAKE_WEBHOOK_URL not set");
 
