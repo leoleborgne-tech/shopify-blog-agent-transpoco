@@ -1,0 +1,28 @@
+name: Daily SEO Article
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # 9h UTC = 10h Dublin
+  workflow_dispatch:      # permet de déclencher manuellement depuis GitHub
+
+jobs:
+  generate-article:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
+          PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
+          UNSPLASH_KEY: ${{ secrets.UNSPLASH_KEY }}
+        run: node scripts/pipeline.js
