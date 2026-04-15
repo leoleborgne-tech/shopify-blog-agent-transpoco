@@ -1,5 +1,7 @@
 // scripts/pipeline.js
 // Pipeline complet — identique au bouton Run de l'app Vercel
+// + liens internes depuis Google Sheet published
+// + sauvegarde automatique après publication
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MAKE_WEBHOOK_URL = process.env.MAKE_WEBHOOK_URL;
@@ -7,6 +9,10 @@ const PEXELS_KEY = process.env.PEXELS_KEY || null;
 const UNSPLASH_KEY = process.env.UNSPLASH_KEY || null;
 
 const SHEET_ID = "1D3unbXti5EXGfk8_843jFluCHwDCJa2Hq-j9qGNRt5Y";
+const PUBLISHED_SHEET_ID = "1KKpiXk1AORbuN_u6ys0e5evqybKDJufsRV5Oy3FfeLA";
+const PUBLISHED_GID = "0";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwIGjU9iqJlMpphnUyygl0ERwc3DYP9NnGubjEXx5dBE3AolPpAHtpYQVzinJriGAtcRg/exec";
+
 const BRAND = "transpocodirect.com";
 const TONE = "professional";
 const WORD_COUNT = 1500;
@@ -145,6 +151,31 @@ CRITICAL HTML rules:
 - <ul><li> with <strong> for key points
 - Return ONLY the HTML, no markdown, no fences`,
 
+  linking: `You are an SEO specialist. Analyze this article and decide where to insert links.
+
+Article topic: "{{keyword}}"
+Article title: "{{title}}"
+
+Article text:
+{{article_text}}
+
+Available internal articles:
+{{internal_articles}}
+
+Rules:
+- 1 external link max: pick an anchor phrase for an authoritative external site. Only if genuinely relevant.
+- 1 to 2 internal links: pick anchor phrases matching a similar topic from internal articles list.
+- Anchors must be natural phrases already present in the text.
+- NEVER pick an anchor from the Key Takeaways block.
+- If no internal article is relevant, return empty array.
+- If no external link is relevant, return null.
+
+STRICT output: valid JSON only, no markdown, no fences:
+{
+  "external_link": {"anchor": "exact phrase from article body only", "url": "https://...", "reason": "why relevant"},
+  "internal_links": [{"anchor": "exact phrase", "url": "https://transpocodirect.com/blogs/news/...", "reason": "why"}]
+}`,
+
   table: `You are a content strategist. Create ONE concise HTML comparison table for this article.
 
 Article topic: "{{keyword}}"
@@ -272,16 +303,45 @@ async function scrapeUrl(url) {
   }
 }
 
+async function readPublishedArticles() {
+  try {
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${PUBLISHED_SHEET_ID}/export?format=csv&gid=${PUBLISHED_GID}`;
+    const res = await fetch(csvUrl);
+    const text = await res.text();
+    const rows = text.split("\n").slice(1).map((row) => {
+      const cols = row.split(",").map((c) => c.replace(/^"|"$/g, "").trim());
+      return { title: cols[0], url: cols[1], keyword: cols[2], date: cols[3] };
+    }).filter((r) => r.title && r.url);
+    console.log(`  ✅ Loaded ${rows.length} published articles for internal linking`);
+    return rows;
+  } catch (e) {
+    console.log(`  ⚠️  Could not read published articles: ${e.message}`);
+    return [];
+  }
+}
+
+async function savePublishedArticle(title, url, keyword) {
+  try {
+    await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, url, keyword }),
+    });
+    console.log(`  ✅ Saved to published sheet: "${title}"`);
+  } catch (e) {
+    console.log(`  ⚠️  Could not save to published sheet: ${e.message}`);
+  }
+}
+
 // ─── Main pipeline ────────────────────────────────────────────────────────────
 
 async function run() {
   console.log("🚀 Starting pipeline...");
 
-  // ── 0. Check env vars ──
   if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not set");
   if (!MAKE_WEBHOOK_URL) throw new Error("MAKE_WEBHOOK_URL not set");
 
-  // ── 1. Read keyword from Google Sheet ──
+  // ── 1. Read keyword ──
   console.log("\n📥 Step 1 — Reading keyword from Google Sheet...");
   const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=1298400966`;
   const csvRes = await fetch(csvUrl);
@@ -296,8 +356,13 @@ async function run() {
   const kw = rows[dayIndex];
   console.log(`  ✅ Keyword: "${kw.keyword}" (index ${dayIndex}/${rows.length})`);
 
-  // ── 2. Scrape competitors ──
-  console.log("\n🔍 Step 2 — Scraping competitors...");
+  // ── 2. Read published articles ──
+  console.log("\n🔗 Step 2 — Loading published articles for internal linking...");
+  const published = await readPublishedArticles();
+  const intArts = published.slice(0, 15).map((a) => `- "${a.keyword}" | ${a.title} | ${a.url}`).join("\n") || "No internal articles yet.";
+
+  // ── 3. Scrape competitors ──
+  console.log("\n🔍 Step 3 — Scraping competitors...");
   const urls = [kw.url1, kw.url2, kw.url3].filter(Boolean);
   let cH = "No competitor data available.";
   let cS = "No competitor data available.";
@@ -310,16 +375,16 @@ async function run() {
     console.log("  ⚠️  No competitor URLs — skipping");
   }
 
-  // ── 3. Title + Meta ──
-  console.log("\n✍️  Step 3 — Title & Meta...");
+  // ── 4. Title + Meta ──
+  console.log("\n✍️  Step 4 — Title & Meta...");
   const tRaw = await callClaude(fillPrompt(PROMPTS.titleMeta, {
     "{{keyword}}": kw.keyword, "{{tone}}": TONE, "{{brand}}": BRAND, "{{competitor_headings}}": cH
   }), 600);
   const tData = pJSON(tRaw);
   console.log(`  ✅ Title: "${tData.title}"`);
 
-  // ── 4. Structure ──
-  console.log("\n🏗️  Step 4 — Structure H2/H3...");
+  // ── 5. Structure ──
+  console.log("\n🏗️  Step 5 — Structure H2/H3...");
   const sRaw = await callClaude(fillPrompt(PROMPTS.structure, {
     "{{keyword}}": kw.keyword, "{{title}}": tData.title, "{{focus_angle}}": tData.focus_angle,
     "{{word_count}}": String(WORD_COUNT), "{{competitor_summary}}": cS
@@ -328,8 +393,8 @@ async function run() {
   struct.sections = struct.sections.slice(0, 3);
   console.log(`  ✅ Structure: ${struct.sections.length} sections`);
 
-  // ── 5. Write sections ──
-  console.log("\n📝 Step 5 — Writing sections...");
+  // ── 6. Write sections ──
+  console.log("\n📝 Step 6 — Writing sections...");
   const swc = Math.round(WORD_COUNT / 3);
   const secHtmls = [];
   for (let i = 0; i < struct.sections.length; i++) {
@@ -344,24 +409,24 @@ async function run() {
     await sleep(400);
   }
 
-  // ── 6. FAQ ──
-  console.log("\n❓ Step 6 — FAQ...");
+  // ── 7. FAQ ──
+  console.log("\n❓ Step 7 — FAQ...");
   const fHtml = cleanHTML(await callClaude(fillPrompt(PROMPTS.faq, {
     "{{keyword}}": kw.keyword,
     "{{faq_questions}}": struct.faq_questions.map((q, i) => `${i+1}. ${q}`).join("\n")
   }), 1000));
   console.log("  ✅ FAQ generated");
 
-  // ── 7. Key Takeaways ──
-  console.log("\n⭐ Step 7 — Key Takeaways...");
+  // ── 8. Key Takeaways ──
+  console.log("\n⭐ Step 8 — Key Takeaways...");
   const eHtml = cleanHTML(await callClaude(fillPrompt(PROMPTS.essential, {
     "{{title}}": tData.title, "{{keyword}}": kw.keyword,
     "{{sections}}": struct.sections.map((s) => s.h2).join(", ")
   }), 600));
   console.log("  ✅ Key Takeaways written");
 
-  // ── 8. Comparison table ──
-  console.log("\n📊 Step 8 — Comparison table...");
+  // ── 9. Comparison table ──
+  console.log("\n📊 Step 9 — Comparison table...");
   const articleSummary = secHtmls.map((h) => h.replace(/<[^>]+>/g, " ")).join(" ").replace(/\s+/g, " ").slice(0, 1500);
   const tableRaw = await callClaude(fillPrompt(PROMPTS.table, {
     "{{keyword}}": kw.keyword, "{{title}}": tData.title, "{{article_summary}}": articleSummary
@@ -371,8 +436,8 @@ async function run() {
   tableHtml = tableEnd !== -1 ? tableHtml.slice(0, tableEnd + 8) : "";
   console.log("  ✅ Table generated");
 
-  // ── 9. Images ──
-  console.log("\n🖼️  Step 9 — Images...");
+  // ── 10. Images ──
+  console.log("\n🖼️  Step 10 — Images...");
   const featImg = await getImage(kw.keyword, 0);
   console.log("  ✅ Featured image ready");
   const imgMap = {};
@@ -382,8 +447,8 @@ async function run() {
     await sleep(400);
   }
 
-  // ── 10. Assemble HTML ──
-  console.log("\n🔧 Step 10 — Assembling HTML...");
+  // ── 11. Assemble HTML ──
+  console.log("\n🔧 Step 11 — Assembling HTML...");
   const css = `<style>.essentiel-block{background:#f0f7ff;border-left:4px solid #2563eb;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:28px;} h2{margin-top:72px;margin-bottom:24px;} h3{margin-top:40px;margin-bottom:16px;} p{margin-bottom:14px;} ul{margin-bottom:14px;} table{width:100%;border-collapse:collapse;margin:24px 0;} th{background:#f0f7ff;padding:10px 12px;text-align:left;border:1px solid #cbd5e1;} td{padding:9px 12px;border:1px solid #e2e8f0;}</style>`;
   const parts = [css, eHtml];
   secHtmls.forEach((h, i) => {
@@ -392,28 +457,63 @@ async function run() {
     if (imgMap[i]) parts.push(`<img src="${imgMap[i]}" alt="${struct.sections[i].h2}" style="width:60%;max-width:600px;display:block;margin:16px auto;border-radius:8px;" loading="lazy"/>`);
   });
   parts.push(fHtml);
-  const finalHTML = parts.join("\n\n");
-  console.log(`  ✅ HTML assembled (${finalHTML.length} chars)`);
+  const preLinkHTML = parts.join("\n\n");
+  const stripped = preLinkHTML.replace(/<a\s[^>]*>(.*?)<\/a>/gi, "$1");
 
-  // ── 11. Send to Make ──
-  console.log("\n🚀 Step 11 — Sending to Make → Shopify...");
-  const payload = {
-    title: tData.title,
-    meta_description: tData.meta_description,
-    author: "Admin",
-    tags: kw.keyword,
-    featured_image_url: featImg,
-    body_html: finalHTML,
-    keyword: kw.keyword,
-    published: true,
-    published_at: new Date().toISOString(),
-  };
+  // ── 12. Links ──
+  console.log("\n🔗 Step 12 — Internal & external links...");
+  let finalHTML = stripped;
+  try {
+    const artText = stripped.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 3000);
+    const lRaw = await callClaude(fillPrompt(PROMPTS.linking, {
+      "{{keyword}}": kw.keyword, "{{title}}": tData.title,
+      "{{article_text}}": artText, "{{internal_articles}}": intArts
+    }), 800);
+    const lData = pJSON(lRaw);
+    if (lData.external_link?.anchor && lData.external_link?.url) {
+      if (eHtml.toLowerCase().indexOf(lData.external_link.anchor.toLowerCase()) === -1) {
+        finalHTML = insertLink(finalHTML, lData.external_link.anchor, lData.external_link.url);
+        console.log(`  ✅ External link: ${lData.external_link.url}`);
+      } else console.log("  ⚠️  External link skipped (Key Takeaways)");
+    }
+    if (lData.internal_links?.length > 0) {
+      lData.internal_links.slice(0, 2).forEach((l) => {
+        if (eHtml.toLowerCase().indexOf(l.anchor.toLowerCase()) === -1) {
+          finalHTML = insertLink(finalHTML, l.anchor, l.url);
+          console.log(`  ✅ Internal link: ${l.url}`);
+        } else console.log("  ⚠️  Internal link skipped (Key Takeaways)");
+      });
+    }
+  } catch (le) {
+    console.log(`  ⚠️  Linking skipped: ${le.message}`);
+  }
+
+  // ── 13. Send to Make ──
+  console.log("\n🚀 Step 13 — Sending to Make → Shopify...");
+  const slug = tData.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const articleUrl = `https://transpocodirect.com/blogs/news/${slug}`;
   const makeRes = await fetch(MAKE_WEBHOOK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      title: tData.title,
+      meta_description: tData.meta_description,
+      author: "Admin",
+      tags: kw.keyword,
+      featured_image_url: featImg,
+      body_html: finalHTML,
+      keyword: kw.keyword,
+      published: true,
+      published_at: new Date().toISOString(),
+    }),
   });
   if (!makeRes.ok) throw new Error(`Make webhook error: ${makeRes.status}`);
+  console.log(`  ✅ Sent to Make successfully!`);
+
+  // ── 14. Save to published sheet ──
+  console.log("\n💾 Step 14 — Saving to published sheet...");
+  await savePublishedArticle(tData.title, articleUrl, kw.keyword);
+
   console.log(`\n✅ Done! Article published: "${tData.title}"`);
 }
 
