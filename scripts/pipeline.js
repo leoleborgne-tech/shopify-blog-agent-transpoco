@@ -164,16 +164,16 @@ Available internal articles:
 
 Rules:
 - 1 external link max: pick an anchor phrase for an authoritative external site. Only if genuinely relevant.
-- 1 to 2 internal links: pick anchor phrases matching a similar topic from internal articles list.
+- INTERNAL LINKS: use ONLY the URLs from the "Available internal articles" list above. NEVER invent a URL. If the list is empty or no article is relevant, return empty array.
+- 1 to 2 internal links maximum, only if genuinely relevant.
 - Anchors must be natural phrases already present in the text.
 - NEVER pick an anchor from the Key Takeaways block.
-- If no internal article is relevant, return empty array.
 - If no external link is relevant, return null.
 
 STRICT output: valid JSON only, no markdown, no fences:
 {
   "external_link": {"anchor": "exact phrase from article body only", "url": "https://...", "reason": "why relevant"},
-  "internal_links": [{"anchor": "exact phrase", "url": "https://transpocodirect.com/blogs/news/...", "reason": "why"}]
+  "internal_links": [{"anchor": "exact phrase", "url": "exact URL from the list only", "reason": "why"}]
 }`,
 
   table: `You are a content strategist. Create ONE concise HTML comparison table for this article.
@@ -223,14 +223,7 @@ function insertLink(html, anchor, url) {
   return html.slice(0, idx) + `<a href="${url}" target="_blank" rel="noopener">${html.slice(idx, idx + anchor.length)}</a>` + html.slice(idx + anchor.length);
 }
 
-function getFallbackImage(keyword) {
-  let seed = 0;
-  for (let i = 0; i < keyword.length; i++) seed += keyword.charCodeAt(i);
-  return `https://picsum.photos/seed/${seed % 1000}/1200/600`;
-}
-
 async function getImage(keyword, index = 0) {
-  const fallback = getFallbackImage(keyword + index);
   const page = index + 1;
 
   if (index % 2 === 0 && UNSPLASH_KEY) {
@@ -260,47 +253,7 @@ async function getImage(keyword, index = 0) {
     } catch {}
   }
 
-  return fallback;
-}
-
-async function callClaude(prompt, maxTokens = 1000, retries = 2) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: maxTokens,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
-      return data.content.find((b) => b.type === "text").text || "";
-    } catch (err) {
-      if (attempt === retries) throw err;
-      console.log(`  ↺ Retry ${attempt + 1}/${retries}...`);
-      await sleep(2000);
-    }
-  }
-}
-
-async function scrapeUrl(url) {
-  try {
-    const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(8000) });
-    const html = await r.text();
-    const headings = [...html.matchAll(/<h[123][^>]*>(.*?)<\/h[123]>/gi)]
-      .map((m) => ({ tag: m[0].match(/<(h[123])/i)[1], text: m[1].replace(/<[^>]+>/g, "").trim() }))
-      .slice(0, 8);
-    return { url, headings, text: html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 3000) };
-  } catch {
-    return { url, headings: [], text: "" };
-  }
+  return null;
 }
 
 async function readPublishedArticles() {
@@ -352,9 +305,22 @@ async function run() {
   }).filter((r) => r.keyword && r.keyword.length > 0);
 
   if (rows.length === 0) throw new Error("No keywords found in Google Sheet");
-  const dayIndex = new Date().getDate() % rows.length;
-  const kw = rows[dayIndex];
-  console.log(`  ✅ Keyword: "${kw.keyword}" (index ${dayIndex}/${rows.length})`);
+
+  // ── Keyword selection based on published articles count ──
+  let kwIndex = 0;
+  try {
+    const pubCsvUrl = `https://docs.google.com/spreadsheets/d/${PUBLISHED_SHEET_ID}/export?format=csv&gid=${PUBLISHED_GID}`;
+    const pubRes = await fetch(pubCsvUrl);
+    const pubText = await pubRes.text();
+    const pubRows = pubText.split("\n").slice(1).filter(r => r.trim().length > 0);
+    kwIndex = pubRows.length % rows.length;
+    console.log(`  ✅ ${pubRows.length} published articles → keyword index ${kwIndex}`);
+  } catch (e) {
+    console.log(`  ⚠️  Could not read published sheet, using index 0`);
+  }
+
+  const kw = rows[kwIndex];
+  console.log(`  ✅ Keyword: "${kw.keyword}" (index ${kwIndex}/${rows.length})`);
 
   // ── 2. Read published articles ──
   console.log("\n🔗 Step 2 — Loading published articles for internal linking...");
@@ -367,7 +333,16 @@ async function run() {
   let cH = "No competitor data available.";
   let cS = "No competitor data available.";
   if (urls.length > 0) {
-    const scraped = await Promise.all(urls.map(scrapeUrl));
+    const scraped = await Promise.all(urls.map(async (url) => {
+      try {
+        const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(8000) });
+        const html = await r.text();
+        const headings = [...html.matchAll(/<h[123][^>]*>(.*?)<\/h[123]>/gi)]
+          .map((m) => ({ tag: m[0].match(/<(h[123])/i)[1], text: m[1].replace(/<[^>]+>/g, "").trim() }))
+          .slice(0, 8);
+        return { url, headings, text: html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 3000) };
+      } catch { return { url, headings: [], text: "" }; }
+    }));
     cH = scraped.map((s, i) => `Competitor ${i+1}: ${s.headings.map(h => h.text).slice(0, 8).join(", ")}`).join("\n");
     cS = scraped.map((s, i) => `Competitor ${i+1}:\nHeadings: ${s.headings.map(h => `[${h.tag}] ${h.text}`).join(" | ")}\nContent: ${s.text.slice(0, 500)}`).join("\n\n");
     console.log(`  ✅ Scraped ${scraped.length} pages`);
@@ -403,7 +378,7 @@ async function run() {
       "{{title}}": tData.title, "{{keyword}}": kw.keyword, "{{h2}}": sec.h2,
       "{{h3s}}": (sec.h3s || []).join(", "), "{{writing_brief}}": sec.writing_brief,
       "{{section_word_count}}": String(swc)
-    }), 1000);
+    }), 2000);
     secHtmls.push(cleanHTML(html));
     console.log(`  ✅ Section ${i+1}/${struct.sections.length}: "${sec.h2}"`);
     await sleep(400);
@@ -430,26 +405,27 @@ async function run() {
   const articleSummary = secHtmls.map((h) => h.replace(/<[^>]+>/g, " ")).join(" ").replace(/\s+/g, " ").slice(0, 1500);
   const tableRaw = await callClaude(fillPrompt(PROMPTS.table, {
     "{{keyword}}": kw.keyword, "{{title}}": tData.title, "{{article_summary}}": articleSummary
-  }), 1000);
+  }), 2000);
   let tableHtml = tableRaw.replace(/```html|```/gi, "").trim();
   const tableEnd = tableHtml.lastIndexOf("</table>");
   tableHtml = tableEnd !== -1 ? tableHtml.slice(0, tableEnd + 8) : "";
+  if (tableHtml && !tableHtml.includes("</table>")) tableHtml += "</tbody></table>";
   console.log("  ✅ Table generated");
 
   // ── 10. Images ──
   console.log("\n🖼️  Step 10 — Images...");
   const featImg = await getImage(kw.keyword, 0);
-  console.log("  ✅ Featured image ready");
+  featImg ? console.log("  ✅ Featured image ready") : console.log("  ⚠️  Featured image not found");
   const imgMap = {};
   for (let i = 0; i < Math.min(struct.sections.length, 3); i++) {
     imgMap[i] = await getImage(`${kw.keyword} ${struct.sections[i].h2}`, i + 1);
-    console.log(`  ✅ Image ${i+1} ready`);
+    imgMap[i] ? console.log(`  ✅ Image ${i+1} ready`) : console.log(`  ⚠️  Image ${i+1} not found`);
     await sleep(400);
   }
 
   // ── 11. Assemble HTML ──
   console.log("\n🔧 Step 11 — Assembling HTML...");
-  const css = `<style>.essentiel-block{background:#f0f7ff;border-left:4px solid #2563eb;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:28px;} h2{margin-top:72px;margin-bottom:24px;} h3{margin-top:40px;margin-bottom:16px;} p{margin-bottom:14px;} ul{margin-bottom:14px;} table{width:100%;border-collapse:collapse;margin:24px 0;} th{background:#f0f7ff;padding:10px 12px;text-align:left;border:1px solid #cbd5e1;} td{padding:9px 12px;border:1px solid #e2e8f0;}</style>`;
+  const css = `<style>.essentiel-block{background:#f0f7ff;border-left:4px solid #2563eb;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:28px;} h2{margin-top:96px;margin-bottom:32px;} h3{margin-top:52px;margin-bottom:20px;} p{margin-bottom:16px;line-height:1.8;} ul{margin-bottom:16px;line-height:1.8;} table{width:100%;border-collapse:collapse;margin:24px 0;} th{background:#f0f7ff;padding:10px 12px;text-align:left;border:1px solid #cbd5e1;} td{padding:9px 12px;border:1px solid #e2e8f0;}</style>`;
   const parts = [css, eHtml];
   secHtmls.forEach((h, i) => {
     parts.push(h);
@@ -500,7 +476,7 @@ async function run() {
       meta_description: tData.meta_description,
       author: "Admin",
       tags: kw.keyword,
-      featured_image_url: featImg,
+      featured_image_url: featImg || "",
       body_html: finalHTML,
       keyword: kw.keyword,
       published: true,
