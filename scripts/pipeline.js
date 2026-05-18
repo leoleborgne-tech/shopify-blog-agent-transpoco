@@ -223,6 +223,33 @@ function insertLink(html, anchor, url) {
   return html.slice(0, idx) + `<a href="${url}" target="_blank" rel="noopener">${html.slice(idx, idx + anchor.length)}</a>` + html.slice(idx + anchor.length);
 }
 
+async function callClaude(prompt, maxTokens = 1000, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: maxTokens,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      return data.content.find((b) => b.type === "text").text || "";
+    } catch (err) {
+      if (attempt === retries) throw err;
+      console.log(`  ↺ Retry ${attempt + 1}/${retries}...`);
+      await sleep(2000);
+    }
+  }
+}
+
 async function getImage(keyword, index = 0) {
   const page = index + 1;
 
